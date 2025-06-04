@@ -105,7 +105,7 @@ setup_pintos_paths() {
     PINTOS_FILE="$PINTOS_BASE_PATH/src/utils/pintos"
     if [[ -f "$PINTOS_FILE" ]]; then
         # Find and replace kernel.bin path around line 259
-        sed -i "s|/[^/]*/[^/]*/pintos/src/threads/build/kernel.bin|$PINTOS_BASE_PATH/src/threads/build/kernel.bin|g" "$PINTOS_FILE"
+        sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/kernel.bin|$PINTOS_BASE_PATH/src/threads/build/kernel.bin|g" "$PINTOS_FILE"
         print_success "Updated kernel.bin path in pintos file"
     else
         print_error "pintos file not found at $PINTOS_FILE"
@@ -116,12 +116,37 @@ setup_pintos_paths() {
     PINTOS_PM_FILE="$PINTOS_BASE_PATH/src/utils/Pintos.pm"
     if [[ -f "$PINTOS_PM_FILE" ]]; then
         # Find and replace loader.bin path around line 362
-        sed -i "s|/[^/]*/[^/]*/pintos/src/threads/build/loader.bin|$PINTOS_BASE_PATH/src/threads/build/loader.bin|g" "$PINTOS_PM_FILE"
+        sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/loader.bin|$PINTOS_BASE_PATH/src/threads/build/loader.bin|g" "$PINTOS_PM_FILE"
         print_success "Updated loader.bin path in Pintos.pm file"
     else
         print_error "Pintos.pm file not found at $PINTOS_PM_FILE"
         exit 1
     fi
+}
+
+setup_pintos_userprog_paths(){
+    print_status "Configuring PintOS file pahts..."
+
+    PINTOS_FILE="$PINTOS_BASE_PATH/src/utils/pintos"
+     if [[ -f "$PINTOS_FILE" ]]; then
+         # Find and replace kernel.bin path around line 259
+         sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/kernel.bin|$PINTOS_BASE_PATH/src/userprog/build/kernel.bin|g" "$PINTOS_FILE"
+         print_success "Updated kernel.bin path in pintos file"
+     else
+         print_error "pintos file not found at $PINTOS_FILE"
+         exit 1
+     fi
+
+     # Update Pintos.pm file - line 362
+     PINTOS_PM_FILE="$PINTOS_BASE_PATH/src/utils/Pintos.pm"
+     if [[ -f "$PINTOS_PM_FILE" ]]; then
+         # Find and replace loader.bin path around line 362
+         sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/loader.bin|$PINTOS_BASE_PATH/src/userprog/build/loader.bin|g" "$PINTOS_PM_FILE"
+         print_success "Updated loader.bin path in Pintos.pm file"
+     else
+         print_error "Pintos.pm file not found at $PINTOS_PM_FILE"
+         exit 1
+     fi
 }
 
 # Section D: Environment Settings (PintOS emulator setting for qemu)
@@ -172,28 +197,45 @@ setup_qemu_environment() {
     # Line 623: Change qemu to qemu-system-i386
     sed -i "s/my (@cmd) = ('qemu')/my (@cmd) = ('qemu-system-i386')/g" "$PINTOS_FILE"
     print_success "Updated QEMU settings in pintos file"
+}
 
+build_pintos_threads(){
     # Build pintos for the project
-    print_status "Building PintOS kernel..."
+    print_status "Building PintOS threads kernel..."
     cd "$PINTOS_BASE_PATH/src/threads"
 
     # Clean and make
     if make clean && make; then
-        print_success "PintOS kernel build completed successfully"
+        print_success "PintOS threads kernel build completed successfully"
     else
-        print_error "PintOS kernel build failed"
+        print_error "PintOS threads build failed"
         exit 1
     fi
 }
 
+build_pintos_userprog(){
+    # Build pintos for the project
+    print_status "Building PintOS userprog kernel..."
+    cd "$PINTOS_BASE_PATH/src/userprog"
+
+    # Clean and make
+    if make clean && make; then
+        print_success "PintOS userprog kernel build completed successfully"
+    else
+        print_error "PintOS userprog build failed"
+        exit 1
+    fi
+}
+
+
 # Section E: Test pintos
 test_pintos() {
-    print_status "Testing PintOS installation..."
+    print_status "Testing PintOS userprog installation..."
 
-    cd "$PINTOS_BASE_PATH/src/threads"
+    cd "$PINTOS_BASE_PATH/src/userprog"
 
-    print_status "Running alarm-multiple test..."
-    if timeout 30 pintos -q run alarm-multiple; then
+    print_status "Running args-multiple test..."
+    if timeout 30 make check; then
         print_success "PintOS test completed successfully"
     else
         print_warning "Test may have timed out or failed, but this is normal for initial setup"
@@ -230,13 +272,31 @@ main() {
     echo ""
 
     if ! setup_pintos_paths; then
-        print_error "Failed to setup PintOS paths"
+        print_error "Failed to setup PintOS threads paths"
         return 1
     fi
     echo ""
 
     if ! setup_qemu_environment; then
         print_error "Failed to setup QEMU environment"
+        return 1
+    fi
+    echo ""
+
+    if ! build_pintos_threads; then
+        print_error "Failed to build threads"
+        return 1
+    fi
+    echo ""
+
+    if ! setup_pintos_userprog_paths; then
+        print_error "Failed to setup PintOS userprog paths"
+        return 1
+    fi
+    echo ""
+
+    if ! build_pintos_userprog; then
+        print_error "Failed to build userprog"
         return 1
     fi
     echo ""
@@ -259,10 +319,12 @@ main() {
     echo ""
     echo "Next steps:"
     echo "1. Restart your terminal or run: source ~/.bashrc"
-    echo "2. Navigate to: cd $PINTOS_BASE_PATH/src/threads"
-    echo "3. Run tests with: pintos -q run alarm-multiple"
+    echo "2. Navigate to: cd $PINTOS_BASE_PATH/src/userprog"
+    echo "3. Run tests with: pintos -q run "
     echo ""
     echo "Happy coding with PintOS!"
+
+    cd $PINTOS_BASE_PATH
 
     return 0
 }
