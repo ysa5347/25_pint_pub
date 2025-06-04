@@ -4,7 +4,6 @@ ld/
 *.so
 
 # executable file
-pintos
 *.out
 
 #logs and temp
