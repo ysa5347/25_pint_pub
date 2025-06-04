@@ -227,9 +227,21 @@ build_pintos_userprog(){
     fi
 }
 
+test_pintos_HW1() {
+    print_status "Testing PintOS thread installation..."
+
+    cd "$PINTOS_BASE_PATH/src/thread"
+
+    print_status "Running alarm-multiple test..."
+    if timeout 30 pintos -q run alarm-multiple; then
+        print_success "PintOS test completed successfully"
+    else
+        print_warning "Test may have timed out or failed, but this is normal for initial setup"
+    fi
+}
 
 # Section E: Test pintos
-test_pintos() {
+test_pintos_HW3() {
     print_status "Testing PintOS userprog installation..."
 
     cd "$PINTOS_BASE_PATH/src/userprog"
@@ -258,6 +270,14 @@ main() {
     if ! detect_pintos_path; then
         print_error "Failed to detect PintOS path. Exiting."
         return 1
+    fi
+    
+    echo "select HW1 or HW3: "
+    read -p "Choice(1/3): " hw_choice
+
+    if [[ "$hw_choice" != "HW1" && "$hw_choice" != "HW3" ]]; then
+        echo "Wrong inputs. Please put valid input '1' or '3'."
+        exit 1
     fi
 
     # Execute setup sections
@@ -288,24 +308,32 @@ main() {
         return 1
     fi
     echo ""
-
-    if ! setup_pintos_userprog_paths; then
-        print_error "Failed to setup PintOS userprog paths"
-        return 1
+    
+    if [[ "$hw_choice" == "1" ]]; then
+        if ! test_pintos_HW1; then
+            print_error "Failed to test PintOS threads tests"
+            return 1
+            fi
     fi
-    echo ""
 
-    if ! build_pintos_userprog; then
-        print_error "Failed to build userprog"
-        return 1
+    if [[ "$hw_choice" == "3" ]]; then
+        if ! setup_pintos_userprog_paths; then
+            print_error "Failed to setup PintOS userprog paths"
+            return 1
+        fi
+        echo ""
+
+        if ! build_pintos_userprog; then
+            print_error "Failed to build userprog"
+            return 1
+        fi
+        echo ""
+
+        if ! test_pintos_HW3; then
+            print_warning "Test failed, but setup may still be functional"
+        fi
+        echo ""
     fi
-    echo ""
-
-    if ! test_pintos; then
-        print_warning "Test failed, but setup may still be functional"
-    fi
-    echo ""
-
     print_success "PintOS setup completed!"
     echo ""
     echo "=================================================="
