@@ -1,0 +1,30 @@
+ld/
+*.o
+*.a
+*.so
+
+# executable file
+*.out
+
+#logs and temp
+*.log
+*.tmp
+
+# build files
+pintos/**/build
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup
+*.bak
+
+# etc
+*.d
+*.d.*i
+.DS_Store
+
