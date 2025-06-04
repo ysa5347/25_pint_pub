@@ -43,7 +43,7 @@ detect_pintos_path() {
         "$HOME/pintos"
         "$HOME/PintOS"
         "$HOME/Downloads/pintos"
-        "$(pwd)/pintos"
+        "$(pwd)"
     )
 
     # Add find result if it exists
@@ -275,7 +275,7 @@ main() {
     echo "select HW1 or HW3: "
     read -p "Choice(1/3): " hw_choice
 
-    if [[ "$hw_choice" != "HW1" && "$hw_choice" != "HW3" ]]; then
+    if [[ $hw_choice != 1 && $hw_choice != 3 ]]; then
         echo "Wrong inputs. Please put valid input '1' or '3'."
         exit 1
     fi
@@ -309,14 +309,14 @@ main() {
     fi
     echo ""
     
-    if [[ "$hw_choice" == "1" ]]; then
+    if [[ "$hw_choice" == 1 ]]; then
         if ! test_pintos_HW1; then
             print_error "Failed to test PintOS threads tests"
             return 1
             fi
     fi
 
-    if [[ "$hw_choice" == "3" ]]; then
+    if [[ "$hw_choice" == 3 ]]; then
         if ! setup_pintos_userprog_paths; then
             print_error "Failed to setup PintOS userprog paths"
             return 1
