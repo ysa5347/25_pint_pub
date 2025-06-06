@@ -14,14 +14,18 @@
 void 
 page_table_init (struct hash *page_table)
 {
-    hash_init (page_table, page_hash, page_less, NULL);
+    /* Thread 초기화 시점에서는 hash table을 초기화하지 않고
+       단순히 NULL 상태로만 설정 */
+    ASSERT (page_table != NULL);
+    memset (page_table, 0, sizeof (*page_table));
 }
 
 /* Destroy page table and all pages in it */
 void 
 page_table_destroy (struct hash *page_table)
 {
-    hash_destroy (page_table, page_destroy_func);
+    if (page_table != NULL && page_table->buckets != NULL) 
+        hash_destroy (page_table, page_destroy_func);
 }
 
 /* Create a new page */
@@ -56,6 +60,9 @@ page_create (void *vaddr, enum page_type type, bool writable)
 struct page *
 page_lookup (struct hash *page_table, void *vaddr)
 {
+    if (page_table->buckets == NULL)
+        hash_init (page_table, page_hash, page_less, NULL);
+
     struct page p;
     struct hash_elem *e;
     
@@ -69,6 +76,9 @@ page_lookup (struct hash *page_table, void *vaddr)
 bool 
 page_insert (struct hash *page_table, struct page *p)
 {
+    if (page_table->buckets == NULL)
+        hash_init (page_table, page_hash, page_less, NULL);
+        
     struct hash_elem *e = hash_insert (page_table, &p->hash_elem);
     return e == NULL;  /* True if insertion was successful */
 }
