@@ -98,8 +98,8 @@ setup_path_environment() {
 }
 
 # Section C: Environment Settings (PintOS setting)
-setup_pintos_paths() {
-    print_status "Configuring PintOS file paths..."
+setup_pintos_threads_paths() {
+    print_status "Configuring PintOS file paths to threads..."
 
     # Update pintos file - line 259
     PINTOS_FILE="$PINTOS_BASE_PATH/src/utils/pintos"
@@ -125,7 +125,7 @@ setup_pintos_paths() {
 }
 
 setup_pintos_userprog_paths(){
-    print_status "Configuring PintOS file pahts..."
+    print_status "Configuring PintOS file pahts to userprog..."
 
     PINTOS_FILE="$PINTOS_BASE_PATH/src/utils/pintos"
      if [[ -f "$PINTOS_FILE" ]]; then
@@ -227,6 +227,20 @@ build_pintos_userprog(){
     fi
 }
 
+build_pintos_vm(){
+    # Build pintos for the project
+    print_status "Building PintOS vm kernel..."
+    cd "$PINTOS_BASE_PATH/src/vm"
+
+    # Clean and make
+    if make clean && make; then
+        print_success "PintOS vm kernel build completed successfully"
+    else
+        print_error "PintOS vm build failed"
+        exit 1
+    fi
+}
+
 test_pintos_HW1() {
     print_status "Testing PintOS thread installation..."
 
@@ -247,7 +261,20 @@ test_pintos_HW3() {
     cd "$PINTOS_BASE_PATH/src/userprog"
 
     print_status "Running args-multiple test..."
-    if timeout 30 make check; then
+    if timeout 30 pintos -q run args-multiple; then
+        print_success "PintOS test completed successfully"
+    else
+        print_warning "Test may have timed out or failed, but this is normal for initial setup"
+    fi
+}
+
+test_pintos_HW4() {
+    print_status "Testing PintOS vm installation..."
+
+    cd "$PINTOS_BASE_PATH/src/vm"
+
+    print_status "Running page-linear test..."
+    if timeout 30 pintos -q run page-linear; then
         print_success "PintOS test completed successfully"
     else
         print_warning "Test may have timed out or failed, but this is normal for initial setup"
@@ -272,11 +299,11 @@ main() {
         return 1
     fi
     
-    echo "select HW1 or HW3: "
-    read -p "Choice(1/3): " hw_choice
+    echo "select HW1 or HW3, HW4: "
+    read -p "Choice(1/3/4): " hw_choice
 
-    if [[ $hw_choice != 1 && $hw_choice != 3 ]]; then
-        echo "Wrong inputs. Please put valid input '1' or '3'."
+    if [[ $hw_choice != 1 && $hw_choice != 3 && $hw_choice != 4 ]]; then
+        echo "Wrong inputs. Please put valid input '1' or '3', '4'."
         exit 1
     fi
 
@@ -291,7 +318,7 @@ main() {
     fi
     echo ""
 
-    if ! setup_pintos_paths; then
+    if ! setup_pintos_threads_paths; then
         print_error "Failed to setup PintOS threads paths"
         return 1
     fi
@@ -313,10 +340,10 @@ main() {
         if ! test_pintos_HW1; then
             print_error "Failed to test PintOS threads tests"
             return 1
-            fi
+        fi
     fi
 
-    if [[ "$hw_choice" == 3 ]]; then
+    if [[ "$hw_choice" == 3 || "$hw_choice" == 4 ]]; then
         if ! setup_pintos_userprog_paths; then
             print_error "Failed to setup PintOS userprog paths"
             return 1
@@ -328,12 +355,22 @@ main() {
             return 1
         fi
         echo ""
+    fi
 
+    if [[ "$hw_choice" == 3 ]]; then
         if ! test_pintos_HW3; then
             print_warning "Test failed, but setup may still be functional"
         fi
         echo ""
     fi
+
+    if [[ "$hw_choice" == 4 ]]; then
+        if ! test_pintos_HW4; then
+            print_warning "Test failed, but setup may still be functional"
+        fi
+        echo ""
+    fi
+
     print_success "PintOS setup completed!"
     echo ""
     echo "=================================================="
