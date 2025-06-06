@@ -124,8 +124,8 @@ swap_out (void *page)
     
     /* Write page to swap device */
     block_sector_t sector = slot * SECTORS_PER_PAGE;
-    
-    for (int i = 0; i < SECTORS_PER_PAGE; i++)
+    int i;
+    for (i = 0; i < SECTORS_PER_PAGE; i++)
     {
         block_write (swap_device, sector + i, 
                     (char *) page + i * BLOCK_SECTOR_SIZE);
@@ -161,8 +161,8 @@ swap_in (swap_slot_t slot, void *page)
     
     /* Read page from swap device */
     block_sector_t sector = slot * SECTORS_PER_PAGE;
-    
-    for (int i = 0; i < SECTORS_PER_PAGE; i++)
+    int i;
+    for (i = 0; i < SECTORS_PER_PAGE; i++)
     {
         block_read (swap_device, sector + i, 
                    (char *) page + i * BLOCK_SECTOR_SIZE);
