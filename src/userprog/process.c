@@ -18,7 +18,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#ifdef USERPROG
+#include "vm/page.h"
+#include "vm/swap.h"
+#endif
 
 #ifdef DEBUG
 #define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -304,6 +307,10 @@ process_exit (void)
     file_allow_write(cur->executing_file);
     file_close(cur->executing_file);
   }
+  #ifdef USERPROG
+  // free page table
+  page_table_destroy(&cur->page_table);
+  #endif
 
   // Unblock the waiting parent process, if any, from wait().
   // now its resource (pcb on page, etc.) can be freed.
@@ -607,6 +614,51 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  #ifdef USERPROG
+  /* VM: Use lazy loading instead of eager loading */
+  struct thread *cur = thread_current ();
+
+  while (read_bytes > 0 || zero_bytes > 0)
+    {
+      /* Calculate how to fill this page.
+          We will read PAGE_READ_BYTES bytes from FILE
+          and zero the final PAGE_ZERO_BYTES bytes. */
+      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+      /* VM: Create a page entry instead of loading immediately */
+      struct page *p;
+      
+      if (page_read_bytes == 0)
+      {
+        /* Page is entirely zero - create zero page */
+        p = page_create (upage, PAGE_ZERO, writable);
+      }
+      else
+      {
+        /* Page has file content - create file-backed page */
+        p = page_create_file (upage, file, ofs, page_read_bytes, 
+                              page_zero_bytes, writable);
+      }
+      
+      if (p == NULL)
+        return false;
+      
+      /* Insert page into current thread's page table */
+      if (!page_insert (&cur->page_table, p))
+      {
+        free (p);
+        return false;
+      }
+
+      /* Advance. */
+      read_bytes -= page_read_bytes;
+      zero_bytes -= page_zero_bytes;
+      upage += PGSIZE;
+      ofs += page_read_bytes;
+    }
+  return true;
+  #else
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0)
     {
@@ -642,6 +694,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
     }
   return true;
+  #endif
 }
 
 
@@ -696,6 +749,34 @@ push_arguments (const char* cmdline_tokens[], int argc, void **esp)
 static bool
 setup_stack (void **esp)
 {
+  #ifdef USERPROG
+  /* VM: Use lazy loading for stack page */
+  struct thread *cur = thread_current ();
+  void *stack_page = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  
+  /* Create a zero-filled page for the stack */
+  struct page *p = page_create (stack_page, PAGE_ZERO, true);
+  if (p == NULL)
+    return false;
+  
+  /* Insert into page table */
+  if (!page_insert (&cur->page_table, p))
+  {
+    free (p);
+    return false;
+  }
+  
+  /* Load the page immediately since we need to set ESP */
+  if (!page_load (p))
+  {
+    page_delete (&cur->page_table, p);
+    return false;
+  }
+  
+  *esp = PHYS_BASE;
+  return true;
+  
+  #else
   uint8_t *kpage;
   bool success = false;
 
@@ -709,6 +790,7 @@ setup_stack (void **esp)
         palloc_free_page (kpage);
     }
   return success;
+  #endif
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

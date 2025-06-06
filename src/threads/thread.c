@@ -13,6 +13,7 @@
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "vm/page.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -368,6 +369,10 @@ thread_exit (void)
 
   struct thread *curr = thread_current();
 
+#ifdef USERPROG
+  page_table_destroy(&curr->page_table);
+#endif
+
   // release all locks
   struct list_elem *e;
   for (e = list_begin (&curr->locks); e != list_end (&curr->locks); e = list_next (e)) {
@@ -609,6 +614,8 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->child_list);
   list_init(&t->file_descriptors);
   t->executing_file = NULL;
+
+  page_table_init(&t->page_table);
 #endif
 }
 

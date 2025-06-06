@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -103,6 +104,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+    /* VM: Virtual Memory Management */
+    struct hash page_table;             /* Process's virtual page table */
 
     // Project 2: file descriptors and process table
     /* Owned by userprog/process.c and userprog/syscall.c */

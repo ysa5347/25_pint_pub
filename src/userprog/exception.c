@@ -5,6 +5,11 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#ifdef USERPROG
+#include "vm/page.h"
+#include "vm/frame.h"
+#endif
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -157,14 +162,78 @@ page_fault (struct intr_frame *f)
     return;
   }
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
+#ifdef USERPROG
+  /* VM: Handle page fault for virtual memory */
+  struct thread *cur = thread_current ();
+  struct page *page = NULL;
+  
+  /* Check if fault address is in user space */
+  if (!is_user_vaddr (fault_addr))
+    goto page_fault_exit;
+  
+  /* Try to find the page in the page table */
+  page = page_lookup (&cur->page_table, fault_addr);
+  
+  if (page != NULL)
+  {
+    /* Page exists in page table but not in memory - load it */
+    if (page_load (page))
+    {
+      /* Successfully loaded the page */
+      return;
+    }
+    else
+    {
+      /* Failed to load the page */
+      printf ("Page fault: failed to load page at %p\n", fault_addr);
+      goto page_fault_exit;
+    }
+  }
+  else
+  {
+    /* Page not found in page table - check if it's a valid stack access */
+    if (page_is_stack_access (fault_addr, f->esp))
+    {
+      /* Try to grow the stack */
+      if (page_grow_stack (fault_addr))
+      {
+        /* Successfully grew the stack */
+        return;
+      }
+      else
+      {
+        /* Failed to grow the stack */
+        printf ("Page fault: failed to grow stack at %p\n", fault_addr);
+        goto page_fault_exit;
+      }
+    }
+    else
+    {
+      /* Invalid memory access */
+      printf ("Page fault: invalid memory access at %p\n", fault_addr);
+      goto page_fault_exit;
+    }
+  }
+
+page_fault_exit:
+  /* VM page fault handling failed - terminate the process */
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  printf ("  fault_addr=%p, esp=%p, eip=%p\n", fault_addr, f->esp, f->eip);
+  
+  /* Kill the faulting process */
+  kill (f);
+  
+#else
+  /* Original non-VM code */
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   kill (f);
+#endif
 }
-
