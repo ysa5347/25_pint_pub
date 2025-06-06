@@ -14,10 +14,12 @@
 void 
 page_table_init (struct hash *page_table)
 {
-    /* Thread 초기화 시점에서는 hash table을 초기화하지 않고
-       단순히 NULL 상태로만 설정 */
+    /* Thread 초기화 시 호출되므로 NULL 상태로 오지는 않지만
+       만약을 위해 체크하고 memset으로 초기화 */
     ASSERT (page_table != NULL);
-    memset (page_table, 0, sizeof (*page_table));
+    
+    /* hash_init를 바로 호출하여 page table 초기화 */
+    hash_init (page_table, page_hash, page_less, NULL);
 }
 
 /* Destroy page table and all pages in it */
@@ -60,8 +62,8 @@ page_create (void *vaddr, enum page_type type, bool writable)
 struct page *
 page_lookup (struct hash *page_table, void *vaddr)
 {
-    if (page_table->buckets == NULL)
-        hash_init (page_table, page_hash, page_less, NULL);
+    /* hash table이 이미 초기화되어 있어야 함 */
+    ASSERT (page_table->buckets != NULL);
 
     struct page p;
     struct hash_elem *e;
@@ -76,8 +78,8 @@ page_lookup (struct hash *page_table, void *vaddr)
 bool 
 page_insert (struct hash *page_table, struct page *p)
 {
-    if (page_table->buckets == NULL)
-        hash_init (page_table, page_hash, page_less, NULL);
+    /* hash table이 이미 초기화되어 있어야 함 */
+    ASSERT (page_table->buckets != NULL);
         
     struct hash_elem *e = hash_insert (page_table, &p->hash_elem);
     return e == NULL;  /* True if insertion was successful */
@@ -233,7 +235,7 @@ page_load_zero (struct page *p)
 /* Create a file-backed page */
 struct page *
 page_create_file (void *vaddr, struct file *file, off_t offset, 
-                 size_t file_bytes, size_t zero_bytes, bool writable)
+                  size_t file_bytes, size_t zero_bytes, bool writable)
 {
     struct page *p = page_create (vaddr, PAGE_FILE, writable);
     if (p == NULL)
