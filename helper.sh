@@ -149,6 +149,31 @@ setup_pintos_userprog_paths(){
      fi
 }
 
+setup_pintos_vm_paths(){
+    print_status "Configuring PintOS file pahts to vm..."
+
+    PINTOS_FILE="$PINTOS_BASE_PATH/src/utils/pintos"
+     if [[ -f "$PINTOS_FILE" ]]; then
+         # Find and replace kernel.bin path around line 259
+         sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/kernel.bin|$PINTOS_BASE_PATH/src/vm/build/kernel.bin|g" "$PINTOS_FILE"
+         print_success "Updated kernel.bin path in pintos file"
+     else
+         print_error "pintos file not found at $PINTOS_FILE"
+         exit 1
+     fi
+
+     # Update Pintos.pm file - line 362
+     PINTOS_PM_FILE="$PINTOS_BASE_PATH/src/utils/Pintos.pm"
+     if [[ -f "$PINTOS_PM_FILE" ]]; then
+         # Find and replace loader.bin path around line 362
+         sed -i "s|/[^/]*/[^/]*/pintos/src/[^/]*/build/loader.bin|$PINTOS_BASE_PATH/src/vm/build/loader.bin|g" "$PINTOS_PM_FILE"
+         print_success "Updated loader.bin path in Pintos.pm file"
+     else
+         print_error "Pintos.pm file not found at $PINTOS_PM_FILE"
+         exit 1
+     fi
+}
+
 # Section D: Environment Settings (PintOS emulator setting for qemu)
 setup_qemu_environment() {
     print_status "Configuring QEMU emulator settings..."
@@ -343,7 +368,7 @@ main() {
         fi
     fi
 
-    if [[ "$hw_choice" == 3 || "$hw_choice" == 4 ]]; then
+    if [[ "$hw_choice" == 3 ]]; then
         if ! setup_pintos_userprog_paths; then
             print_error "Failed to setup PintOS userprog paths"
             return 1
@@ -354,10 +379,7 @@ main() {
             print_error "Failed to build userprog"
             return 1
         fi
-        echo ""
-    fi
 
-    if [[ "$hw_choice" == 3 ]]; then
         if ! test_pintos_HW3; then
             print_warning "Test failed, but setup may still be functional"
         fi
@@ -365,6 +387,17 @@ main() {
     fi
 
     if [[ "$hw_choice" == 4 ]]; then
+        if ! setup_pintos_vm_paths; then
+            print_error "Failed to setup PintOS userprog paths"
+            return 1
+        fi
+        echo ""
+
+        if ! build_pintos_vm; then
+            print_error "Failed to build userprog"
+            return 1
+        fi
+
         if ! test_pintos_HW4; then
             print_warning "Test failed, but setup may still be functional"
         fi
