@@ -365,35 +365,93 @@ page_destroy_func (struct hash_elem *e, void *aux UNUSED)
 bool 
 page_is_stack_access (void *vaddr, void *esp)
 {
-    return (vaddr >= esp || 
-            vaddr >= (char *) esp - STACK_HEURISTIC) &&
-           vaddr >= PHYS_BASE - STACK_MAX_SIZE;
+    /* Basic validation: must be in user address space */
+    if (!is_user_vaddr(vaddr))
+        return false;
+    
+    /* Must be within the maximum stack region */
+    if (vaddr < PHYS_BASE - STACK_MAX_SIZE)
+        return false;
+    
+    /* Must not be above PHYS_BASE */
+    if (vaddr >= PHYS_BASE)
+        return false;
+    
+    /* Allow access at ESP or above (though above ESP is unusual) */
+    if (vaddr >= esp)
+        return true;
+    
+    /* Allow access within reasonable distance below ESP */
+    size_t distance_below_esp = (char *)esp - (char *)vaddr;
+    
+    if (distance_below_esp <= PGSIZE)
+        return true;
+    
+    return false;
 }
 
 /* Grow the stack by creating a new page */
 bool 
 page_grow_stack (void *vaddr)
 {
-    /* Check if we're within stack size limit */
-    if (vaddr < PHYS_BASE - STACK_MAX_SIZE)
+    /* Basic validation */
+    if (!is_user_vaddr(vaddr))
         return false;
     
-    /* Round down to page boundary */
-    void *page_addr = pg_round_down (vaddr);
+    if (vaddr >= PHYS_BASE)
+        return false;
     
-    /* Create a new zero-filled page */
+    void *page_addr = pg_round_down(vaddr);
+    struct thread *cur = thread_current();
+    
+    void *current_stack_bottom = NULL;
+    
+    /* Find current lowest stack page */
+    struct hash_iterator iter;
+    hash_first(&iter, &cur->page_table);
+    while (hash_next(&iter)){
+        struct page *p = hash_entry(hash_cur(&iter), struct page, hash_elem);
+        
+        /* Check if this page is in stack region */
+        if (p->vaddr < PHYS_BASE && p->vaddr >= PHYS_BASE - STACK_MAX_SIZE){
+            if (current_stack_bottom == NULL || p->vaddr < current_stack_bottom)
+                current_stack_bottom = p->vaddr;
+        }
+    }
+    
+    /* If no stack pages exist yet, this will be the first */
+    if (current_stack_bottom == NULL)
+        current_stack_bottom = PHYS_BASE - PGSIZE;  /* Initial stack page */
+    
+    /* Calculate new stack size if we add the requested page */
+    void *new_stack_bottom = (page_addr < current_stack_bottom) ? page_addr : current_stack_bottom;
+    size_t new_stack_size = PHYS_BASE - new_stack_bottom;
+    
+    /* Enforce stack size limit */
+    if (new_stack_size > STACK_MAX_SIZE)
+        return false;
+    
+    /* Check if page already exists */
+    struct page *existing_page = page_lookup (&cur->page_table, page_addr);
+    if (existing_page != NULL)
+        return page_load (existing_page);
+    
+    /* new page create, insert */
     struct page *p = page_create (page_addr, PAGE_ZERO, true);
     if (p == NULL)
         return false;
     
-    /* Insert into current thread's page table */
-    struct thread *cur = thread_current ();
-    if (!page_insert (&cur->page_table, p))
-    {
+    /* Insert into page table */
+    if (!page_insert (&cur->page_table, p)){
         free (p);
         return false;
     }
     
-    /* Load the page immediately */
-    return page_load (p);
+    /* immidiate load */
+    if (!page_load (p)){
+        page_delete (&cur->page_table, p);
+        return false;
+    }
+    
+    return true;
 }
