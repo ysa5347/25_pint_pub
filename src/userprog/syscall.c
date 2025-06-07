@@ -31,6 +31,7 @@ static int memread_user (void *src, void *des, size_t bytes);
 static struct file_desc* find_file_desc(struct thread *, int fd);
 
 static struct mmap_entry* find_mmap_entry(struct thread *t, mapid_t mapid);
+static struct mmap_entry* find_mmap_entry_by_addr(struct thread *t, void *addr);
 static bool check_address_overlap(struct thread *t, void *addr, size_t length);
 static mapid_t get_next_mapid(struct thread *t);
 
@@ -625,16 +626,14 @@ static int
 memread_user (void *src, void *dst, size_t bytes)
 {
   int32_t value;
-  size_t i,t;
+  size_t i;
+  uint8_t *byte_src = (uint8_t*)src;
   for(i=0; i<bytes; i++) {
-    t = src+i;
-    value = get_user(t);
-    if(value != -1) {
-		*(char*)(dst + i) = value & 0xff;
-	}
-	else{  
-		fail_invalid_access();
-	}
+    value = get_user(byte_src + i);
+    if(value != -1) 
+		  *(char*)(dst + i) = value & 0xff;
+    else
+      fail_invalid_access();
   }
   return (int)bytes;
 }
@@ -653,9 +652,8 @@ find_file_desc(struct thread *t, int fd)
  
   bool empty = list_empty(&t -> file_descriptors);
   if (!empty) {
-    struct list_elem *e = list_begin(&t->file_descriptors);
-    for(e;e != list_end(&t->file_descriptors); e = list_next(e))
-    {
+    struct list_elem *e;
+    for(e = list_begin(&t->file_descriptors); e != list_end(&t->file_descriptors); e = list_next(e)){
       struct file_desc *desc = list_entry(e, struct file_desc, elem);
       if(desc->id == fd) {
         return desc;
@@ -723,7 +721,7 @@ get_next_mapid(struct thread *t)
 }
 
 /* Find mmap entry that contains the given address */
-struct mmap_entry*
+static struct mmap_entry*
 find_mmap_entry_by_addr(struct thread *t, void *addr)
 {
   ASSERT (t != NULL);
