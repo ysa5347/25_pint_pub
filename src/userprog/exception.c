@@ -169,7 +169,7 @@ page_fault (struct intr_frame *f)
   
   /* Check if fault address is in user space */
   if (!is_user_vaddr (fault_addr)){
-    printf ("Page fault: invalid user address %p\n", fault_addr);
+    // printf ("Page fault: invalid user address %p\n", fault_addr);
     goto page_fault_exit;
   }
   
@@ -179,36 +179,36 @@ page_fault (struct intr_frame *f)
   if (page != NULL)
   {
     /* Page exists in page table but not in memory - load it */
-    printf ("Page fault: loading existing page at %p\n", fault_addr);
+    // printf ("Page fault: loading existing page at %p\n", fault_addr);
     
     if (page_load (page))
     {
       /* Successfully loaded the page */
-      printf ("Page fault: successfully loaded page at %p\n", fault_addr);
+      // printf ("Page fault: successfully loaded page at %p\n", fault_addr);
       return;
     }
     else
     {
       /* Failed to load the page */
-      printf ("Page fault: failed to load existing page at %p\n", fault_addr);
+      // printf ("Page fault: failed to load existing page at %p\n", fault_addr);
       goto page_fault_exit;
     }
   }
   else
   {
     /* Page not found in page table - check if it's a valid stack access */
-    printf ("Page fault: checking stack access for %p (esp=%p)\n", fault_addr, f->esp);
+    // printf ("Page fault: checking stack access for %p (esp=%p)\n", fault_addr, f->esp);
     
     if (page_is_stack_access (fault_addr, f->esp))
     {
       /* Calculate current stack size to check limits */
       size_t current_stack_size = PHYS_BASE - pg_round_down(fault_addr);
-      printf ("Page fault: potential stack growth to size %zu bytes\n", current_stack_size);
+      // printf ("Page fault: potential stack growth to size %zu bytes\n", current_stack_size);
       
       /* Check if we've reached stack size limit */
       if (current_stack_size > STACK_MAX_SIZE)
       {
-        printf ("Page fault: stack size limit exceeded (%zu > %d bytes)\n", 
+        // printf ("Page fault: stack size limit exceeded (%zu > %d bytes)\n", 
                 current_stack_size, STACK_MAX_SIZE);
         goto page_fault_exit;
       }
@@ -216,24 +216,24 @@ page_fault (struct intr_frame *f)
       /* Additional validation: check if this is a reasonable stack growth */
       if (fault_addr < f->esp - STACK_HEURISTIC * 4)  /* More lenient for function calls */
       {
-        printf ("Page fault: stack access too far from ESP (%p vs %p, distance=%ld)\n", 
+        // printf ("Page fault: stack access too far from ESP (%p vs %p, distance=%ld)\n", 
                 fault_addr, f->esp, (char*)f->esp - (char*)fault_addr);
         goto page_fault_exit;
       }
       
       /* Try to grow the stack */
-      printf ("Page fault: attempting to grow stack at %p\n", fault_addr);
+      // printf ("Page fault: attempting to grow stack at %p\n", fault_addr);
       
       if (page_grow_stack (fault_addr))
       {
         /* Successfully grew the stack */
-        printf ("Page fault: successfully grew stack at %p\n", fault_addr);
+        // printf ("Page fault: successfully grew stack at %p\n", fault_addr);
         return;
       }
       else
       {
         /* Failed to grow the stack */
-        printf ("Page fault: failed to grow stack at %p\n", fault_addr);
+        // printf ("Page fault: failed to grow stack at %p\n", fault_addr);
         goto page_fault_exit;
       }
     }
@@ -242,16 +242,16 @@ page_fault (struct intr_frame *f)
       /* Invalid memory access - provide detailed error information */
       if (fault_addr < PHYS_BASE && fault_addr >= PHYS_BASE - STACK_MAX_SIZE)
       {
-        printf ("Page fault: invalid stack access at %p (esp=%p, distance=%ld)\n", 
+        // printf ("Page fault: invalid stack access at %p (esp=%p, distance=%ld)\n", 
                 fault_addr, f->esp, (char*)f->esp - (char*)fault_addr);
       }
       else if (fault_addr < (void*)0x08048000)  /* Below typical code segment */
       {
-        printf ("Page fault: access to low memory at %p (possible null pointer)\n", fault_addr);
+        // printf ("Page fault: access to low memory at %p (possible null pointer)\n", fault_addr);
       }
       else
       {
-        printf ("Page fault: invalid memory access at %p\n", fault_addr);
+        // printf ("Page fault: invalid memory access at %p\n", fault_addr);
       }
       goto page_fault_exit;
     }
@@ -259,19 +259,19 @@ page_fault (struct intr_frame *f)
 
 page_fault_exit:
   /* VM page fault handling failed - terminate the process */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  printf ("  fault_addr=%p, esp=%p, eip=%p\n", fault_addr, f->esp, f->eip);
+  // printf ("  fault_addr=%p, esp=%p, eip=%p\n", fault_addr, f->esp, f->eip);
   
   /* Additional debugging information for stack-related faults */
   if (fault_addr < PHYS_BASE && fault_addr >= PHYS_BASE - STACK_MAX_SIZE)
   {
-    printf ("  Stack region access detected\n");
-    printf ("  Distance from ESP: %ld bytes\n", (char*)f->esp - (char*)fault_addr);
-    printf ("  Current stack top: %p\n", f->esp);
+    // printf ("  Stack region access detected\n");
+    // printf ("  Distance from ESP: %ld bytes\n", (char*)f->esp - (char*)fault_addr);
+    // printf ("  Current stack top: %p\n", f->esp);
     
     /* Try to identify stack pages */
     struct hash_iterator iter;
@@ -290,8 +290,8 @@ page_fault_exit:
       }
     }
     
-    printf ("  Current stack pages: %d, lowest: %p\n", stack_page_count, lowest_stack_page);
-    printf ("  Current stack size: %zu bytes\n", PHYS_BASE - lowest_stack_page);
+    // printf ("  Current stack pages: %d, lowest: %p\n", stack_page_count, lowest_stack_page);
+    // printf ("  Current stack size: %zu bytes\n", PHYS_BASE - lowest_stack_page);
   }
   
   /* Kill the faulting process */
@@ -299,7 +299,7 @@ page_fault_exit:
   
 #else
   /* Original non-VM code */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
+  // printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
