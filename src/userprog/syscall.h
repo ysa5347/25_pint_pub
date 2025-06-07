@@ -28,6 +28,6 @@ void sys_exit (int);
 /* Memory mapping functions */
 mapid_t sys_mmap (int fd, void *addr);
 void sys_munmap (mapid_t mapping);
-extern struct mmap_entry* find_mmap_entry_by_addr(struct thread *t, void *addr);
+struct mmap_entry* find_mmap_entry_by_addr(struct thread *t, void *addr);
 
 #endif /* userprog/syscall.h */
