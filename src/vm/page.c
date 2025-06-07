@@ -10,6 +10,8 @@
 #include "vm/frame.h"
 #include "vm/swap.h"
 
+extern struct lock filesys_lock;
+
 /* Initialize page table */
 void 
 page_table_init (struct hash *page_table)
@@ -91,19 +93,30 @@ page_insert (struct hash *page_table, struct page *p)
 void 
 page_delete (struct hash *page_table, struct page *p)
 {
+    if (p == NULL)
+        return;
+    
+    /* Remove from hash table first */
     hash_delete (page_table, &p->hash_elem);
     
     /* Remove pagedir mapping if the page is in memory */
     if (p->frame != NULL && p->state == PAGE_MEMORY)
     {
-        pagedir_clear_page (thread_current()->pagedir, p->vaddr);
+        struct thread *cur = thread_current();
+        if (cur->pagedir != NULL)  /* 프로세스 종료 중일 수 있으므로 체크 */
+            pagedir_clear_page (cur->pagedir, p->vaddr);
+        
         /* Free the physical frame if allocated */
         frame_free (p->frame);
+        p->frame = NULL;  /* 중복 해제 방지 */
     }
     
     /* Free swap slot if used */
     if (p->state == PAGE_SWAPPED && p->swap_slot != SIZE_MAX)
+    {
         swap_free (p->swap_slot);
+        p->swap_slot = SIZE_MAX;  /* 중복 해제 방지 */
+    }
     
     free (p);
 }
@@ -159,8 +172,11 @@ page_load_file (struct page *p)
     /* Read file content into frame */
     if (p->file != NULL && p->file_bytes > 0)
     {
+        lock_acquire (&filesys_lock);
         file_seek (p->file, p->file_offset);
         int bytes_read = file_read (p->file, frame, p->file_bytes);
+        lock_release (&filesys_lock);
+        
         if (bytes_read != (int) p->file_bytes)
         {
             frame_free (frame);

@@ -29,6 +29,8 @@
 #define _DEBUG_PRINTF(...) /* do nothing */
 #endif
 
+extern struct lock filesys_lock; 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void push_arguments (const char *[], int cnt, void **esp);
@@ -302,20 +304,38 @@ process_exit (void)
     }
   }
 
-while (!list_empty(&cur->mmap_list)) {
-  struct list_elem *e = list_front(&cur->mmap_list);
-  struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
-  
-  /* 에러가 발생해도 계속 정리 진행 */
-  sys_munmap(entry->mapid);
-  
-  /* 무한 루프 방지를 위한 안전장치 */
-  if (!list_empty(&cur->mmap_list) && list_front(&cur->mmap_list) == e) {
-    /* sys_munmap이 실패한 경우 강제 제거 */
-    list_remove(e);
-    palloc_free_page(entry);
+  while (!list_empty(&cur->mmap_list)) {
+    struct list_elem *e = list_front(&cur->mmap_list);
+    struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+    mapid_t mapid = entry->mapid;
+    
+    /* Try to unmap normally first */
+    sys_munmap(mapid);
+    
+    /* Safety check: if munmap failed and entry is still there, force remove */
+    if (!list_empty(&cur->mmap_list)) {
+      struct list_elem *check_e = list_front(&cur->mmap_list);
+      struct mmap_entry *check_entry = list_entry(check_e, struct mmap_entry, elem);
+      
+      if (check_entry == entry) {
+        /* munmap failed - force cleanup */
+        printf("[WARNING] Force cleaning mmap entry (mapid=%d) due to munmap failure\n", entry->mapid);
+        
+        /* Remove from list */
+        list_remove(&entry->elem);
+        
+        /* Force close file if still open */
+        if (entry->file) {
+          lock_acquire (&filesys_lock);
+          file_close(entry->file);
+          lock_release (&filesys_lock);
+        }
+        
+        /* Free memory */
+        palloc_free_page(entry);
+      }
+    }
   }
-}
   
   /* Release file for the executable */
   if(cur->executing_file) {
