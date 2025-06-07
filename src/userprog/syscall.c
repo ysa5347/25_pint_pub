@@ -13,6 +13,11 @@
 #include "threads/synch.h"
 #include "lib/kernel/list.h"
 
+#ifdef USERPROG
+#include "vm/page.h"
+#include "userprog/pagedir.h"
+#endif
+
 #define STDIN 0
 #define STDOUT 1
 #define STDERR 2
@@ -23,8 +28,11 @@ static void check_user (const uint8_t *uaddr);
 static int32_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static int memread_user (void *src, void *des, size_t bytes);
-
 static struct file_desc* find_file_desc(struct thread *, int fd);
+
+static struct mmap_entry* find_mmap_entry(struct thread *t, mapid_t mapid);
+static bool check_address_overlap(struct thread *t, void *addr, size_t length);
+static mapid_t get_next_mapid(struct thread *t);
 
 void sys_halt (void);
 void sys_exit (int);
@@ -550,18 +558,15 @@ void sys_munmap(mapid_t mapping) {
   void *addr = entry->addr;
   size_t length = entry->length;
   
-  for (void *page_addr = addr; 
-       (uint8_t*)page_addr < (uint8_t*)addr + length; 
-       page_addr = (uint8_t*)page_addr + PGSIZE)
-  {
+  void *page_addr;
+  for (page_addr = addr; 
+    (uint8_t*)page_addr < (uint8_t*)addr + length; 
+    page_addr = (uint8_t*)page_addr + PGSIZE) {
     struct page *p = page_lookup(&current->page_table, page_addr);
-    if (p != NULL)
-    {
+    if (p != NULL){
       /* If page is in memory and dirty, write back to file */
-      if (p->state == PAGE_MEMORY && p->frame != NULL)
-      {
-        if (pagedir_is_dirty(current->pagedir, page_addr))
-        {
+      if (p->state == PAGE_MEMORY && p->frame != NULL){
+        if (pagedir_is_dirty(current->pagedir, page_addr)){
           /* Write dirty page back to file */
           lock_acquire (&filesys_lock);
           file_seek(entry->file, p->file_offset);
