@@ -28,6 +28,10 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+/* VM: Include VM headers */
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -99,6 +103,13 @@ main (void)
   malloc_init ();
   paging_init ();
 
+#ifdef USERPROG
+  /* VM: Initialize virtual memory system */
+  printf ("Initializing virtual memory system...\n");
+  frame_table_init ();
+  printf ("Frame table initialized.\n");
+#endif
+
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -124,6 +135,13 @@ main (void)
   /* Initialize file system. */
   ide_init ();
   locate_block_devices ();
+  
+#ifdef USERPROG
+  /* VM: Initialize swap system after block devices are located */
+  swap_init ();
+  printf ("Swap system initialized.\n");
+#endif
+  
   filesys_init (format_filesys);
 #endif
 
@@ -133,10 +151,16 @@ main (void)
   run_actions (argv);
 
   /* Finish up. */
+#ifdef USERPROG
+  /* VM: Clean up virtual memory system */
+  frame_table_destroy ();
+  swap_destroy ();
+#endif
+  
   shutdown ();
   thread_exit ();
 }
-
+
 /* Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
    kernel loader, so we have to zero it ourselves.

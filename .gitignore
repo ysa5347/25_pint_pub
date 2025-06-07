@@ -4,7 +4,6 @@ ld/
 *.so
 
 # executable file
-pintos
 *.out
 
 #logs and temp
@@ -22,10 +21,10 @@ pintos/**/build
 *.swo
 
 # Backup
-*~
 *.bak
 
 # etc
 *.d
 *.d.*i
 .DS_Store
+

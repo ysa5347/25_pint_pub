@@ -61,11 +61,11 @@ static inline uintptr_t pd_no (const void *va) {
 #define PTE_FLAGS 0x00000fff    /* Flag bits. */
 #define PTE_ADDR  0xfffff000    /* Address bits. */
 #define PTE_AVL   0x00000e00    /* Bits available for OS use. */
-#define PTE_P 0x1               /* 1=present, 0=not present. */
-#define PTE_W 0x2               /* 1=read/write, 0=read-only. */
-#define PTE_U 0x4               /* 1=user/kernel, 0=kernel only. */
-#define PTE_A 0x20              /* 1=accessed, 0=not acccessed. */
-#define PTE_D 0x40              /* 1=dirty, 0=not dirty (PTEs only). */
+#define PTE_P 0x1               /* 001,       1=present, 0=not present. */
+#define PTE_W 0x2               /* 010,       1=read/write, 0=read-only. */
+#define PTE_U 0x4               /* 100,       1=user/kernel, 0=kernel only. */
+#define PTE_A 0x20              /* 0010 0000, 1=accessed, 0=not acccessed. */
+#define PTE_D 0x40              /* 0100 0000, 1=dirty, 0=not dirty (PTEs only). */
 
 /* Returns a PDE that points to page table PT. */
 static inline uint32_t pde_create (uint32_t *pt) {
