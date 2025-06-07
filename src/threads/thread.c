@@ -614,8 +614,9 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->child_list);
   list_init(&t->file_descriptors);
   t->executing_file = NULL;
-
-  page_table_init(&t->page_table);
+  
+  // page_table_init을 제거 - 나중에 process.c에서 초기화
+  memset(&t->page_table, 0, sizeof(t->page_table));
 #endif
 }
 

@@ -62,8 +62,9 @@ page_create (void *vaddr, enum page_type type, bool writable)
 struct page *
 page_lookup (struct hash *page_table, void *vaddr)
 {
-    /* hash table이 이미 초기화되어 있어야 함 */
-    ASSERT (page_table->buckets != NULL);
+    /* hash table이 아직 초기화되지 않았다면 빈 결과 반환 */
+    if (page_table->buckets == NULL)
+        return NULL;
 
     struct page p;
     struct hash_elem *e;
@@ -78,9 +79,10 @@ page_lookup (struct hash *page_table, void *vaddr)
 bool 
 page_insert (struct hash *page_table, struct page *p)
 {
-    /* hash table이 이미 초기화되어 있어야 함 */
-    ASSERT (page_table->buckets != NULL);
-        
+    /* hash table이 아직 초기화되지 않았다면 빈 결과 반환 */
+    if (page_table->buckets == NULL)
+        return false;
+
     struct hash_elem *e = hash_insert (page_table, &p->hash_elem);
     return e == NULL;  /* True if insertion was successful */
 }

@@ -443,6 +443,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto finish;
   process_activate ();
 
+  #ifdef USERPROG
+  /* 이제 user thread가 완전히 설정된 상태에서 page table 초기화 */
+  page_table_init (&t->page_table);
+  #endif
+
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL)
@@ -450,7 +455,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     printf ("load: %s: open failed\n", file_name);
     goto finish;
   }
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
