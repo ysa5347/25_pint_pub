@@ -472,20 +472,25 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 mapid_t sys_mmap(int fd, void *addr) {
   struct thread *current = thread_current();
   
+  printf("[DEBUG] sys_mmap called: fd=%d, addr=%p\n", fd, addr);
+  
   /* 기본 인자 검증 */
   if (addr != NULL) {
     check_user((const uint8_t*) addr);
   }
   
   if (addr == NULL) {
+    printf("[DEBUG] mmap failed: addr is NULL\n");
     return MAP_FAILED;
   }
   
   if (((uint32_t) addr) % PGSIZE != 0) {
+    printf("[DEBUG] mmap failed: addr not aligned (addr=%p, PGSIZE=%d)\n", addr, PGSIZE);
     return MAP_FAILED;
   }
   
   if (fd < 0 || fd == STDIN || fd == STDOUT) {
+    printf("[DEBUG] mmap failed: invalid fd=%d\n", fd);
     return MAP_FAILED;
   }
   
@@ -494,36 +499,37 @@ mapid_t sys_mmap(int fd, void *addr) {
   
   struct file_desc* file_d = find_file_desc(current, fd);
   if (file_d == NULL || file_d->file == NULL) {
+    printf("[DEBUG] mmap failed: file_desc not found for fd=%d\n", fd);
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }
+  printf("[DEBUG] found file_desc: %p, file: %p\n", file_d, file_d->file);
   
   /* 파일 크기 확인 */
   off_t file_size = file_length(file_d->file);
+  printf("[DEBUG] file_length returned: %d\n", (int)file_size);
   if (file_size <= 0) {
+    printf("[DEBUG] mmap failed: file_size <= 0 (%d)\n", (int)file_size);
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }
   
   /* 매핑 크기 계산 (페이지 단위로 반올림) */
   size_t mapping_length = ROUND_UP(file_size, PGSIZE);
+  printf("[DEBUG] mapping_length: %zu\n", mapping_length);
   
   /* 주소 겹침 검사 */
   if (check_address_overlap(current, addr, mapping_length)) {
+    printf("[DEBUG] mmap failed: address overlap detected\n");
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }
-
-  /* 파일 재오픈 전에 추가 검증 */  
-  if (file_length(file_d->file) <= 0) {
-      lock_release (&filesys_lock);
-      return MAP_FAILED;
-  }
-
+  
   /* 파일 재오픈 (독립적인 파일 포인터 필요) */
   struct file *mapped_file = file_reopen(file_d->file);
+  printf("[DEBUG] file_reopen result: %p\n", mapped_file);
   if (mapped_file == NULL) {
-    // printf("[DEBUG] file_reopen failed for fd=%d\n", fd);
+    printf("[DEBUG] mmap failed: file_reopen returned NULL\n");
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }
@@ -533,6 +539,7 @@ mapid_t sys_mmap(int fd, void *addr) {
   /* mmap_entry 생성 및 초기화 */
   struct mmap_entry *entry = palloc_get_page(0);
   if (entry == NULL) {
+    printf("[DEBUG] mmap failed: palloc_get_page returned NULL\n");
     file_close(mapped_file);
     return MAP_FAILED;
   }
@@ -546,9 +553,7 @@ mapid_t sys_mmap(int fd, void *addr) {
   /* 프로세스의 mmap_list에 추가 */
   list_push_back(&current->mmap_list, &entry->elem);
   
-  // printf("[DEBUG] sys_mmap success: fd=%d, addr=%p, mapid=%d, length=%zu\n", 
-  //        fd, addr, entry->mapid, mapping_length);
-  
+  printf("[DEBUG] sys_mmap success: mapid=%d\n", entry->mapid);
   return entry->mapid;
 }
 
