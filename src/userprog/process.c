@@ -29,6 +29,8 @@
 #define _DEBUG_PRINTF(...) /* do nothing */
 #endif
 
+extern struct lock filesys_lock; 
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void push_arguments (const char *[], int cnt, void **esp);
@@ -302,6 +304,39 @@ process_exit (void)
     }
   }
 
+  while (!list_empty(&cur->mmap_list)) {
+    struct list_elem *e = list_front(&cur->mmap_list);
+    struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+    mapid_t mapid = entry->mapid;
+    
+    /* Try to unmap normally first */
+    sys_munmap(mapid);
+    
+    /* Safety check: if munmap failed and entry is still there, force remove */
+    if (!list_empty(&cur->mmap_list)) {
+      struct list_elem *check_e = list_front(&cur->mmap_list);
+      struct mmap_entry *check_entry = list_entry(check_e, struct mmap_entry, elem);
+      
+      if (check_entry == entry) {
+        /* munmap failed - force cleanup */
+        printf("[WARNING] Force cleaning mmap entry (mapid=%d) due to munmap failure\n", entry->mapid);
+        
+        /* Remove from list */
+        list_remove(&entry->elem);
+        
+        /* Force close file if still open */
+        if (entry->file) {
+          lock_acquire (&filesys_lock);
+          file_close(entry->file);
+          lock_release (&filesys_lock);
+        }
+        
+        /* Free memory */
+        palloc_free_page(entry);
+      }
+    }
+  }
+  
   /* Release file for the executable */
   if(cur->executing_file) {
     file_allow_write(cur->executing_file);
@@ -446,6 +481,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   #ifdef USERPROG
   /* 이제 user thread가 완전히 설정된 상태에서 page table 초기화 */
   page_table_init (&t->page_table);
+  
+  // init mmap_list
+  list_init(&t->mmap_list);
+  t->next_mapid = 1;
   #endif
 
   /* Open executable file. */
@@ -543,7 +582,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  finish:
   /* We arrive here whether the load is successful or not. */
-
+  if (!success) {
+    /* mmap_list 정리 */
+    while (!list_empty(&t->mmap_list)) {
+      struct list_elem *e = list_pop_front(&t->mmap_list);
+      struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+      if (entry->file) file_close(entry->file);
+      palloc_free_page(entry);
+    }
+  }
   // do not close file here, postpone until it terminates
   return success;
 }
@@ -818,8 +865,6 @@ install_page (void *upage, void *kpage, bool writable)
                   && pagedir_set_page (t->pagedir, upage, kpage, writable));
 
   #ifdef USERPROG
-  #ifdef VM
-    /* VM: Update the page table entry if it exists */
     if (success)
     {
       struct page *p = page_lookup (&t->page_table, upage);
@@ -828,7 +873,6 @@ install_page (void *upage, void *kpage, bool writable)
         page_set_frame (p, kpage);
       }
     }
-  #endif
   #endif
   return success;
 }

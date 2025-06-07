@@ -121,6 +121,10 @@ struct thread
     struct list file_descriptors;       /* List of file_descriptors the thread contains */
 
     struct file *executing_file;        /* The executable file of associated process. */
+
+    /* Project 4: Memory mapped files */
+    struct list mmap_list;              /* List of memory mapped files */
+    int next_mapid;                     /* Next mapping ID to assign */
 #endif
 
     /* Owned by thread.c. */
