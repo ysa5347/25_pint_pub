@@ -365,35 +365,50 @@ page_destroy_func (struct hash_elem *e, void *aux UNUSED)
 bool 
 page_is_stack_access (void *vaddr, void *esp)
 {
-    return (vaddr >= esp || 
-            vaddr >= (char *) esp - STACK_HEURISTIC) &&
-           vaddr >= PHYS_BASE - STACK_MAX_SIZE;
+    /* is valid user addr? */
+    if (!is_user_vaddr(vaddr))
+        return false;
+    
+    /* is vadder in whole stack size? */
+    if (vaddr < PHYS_BASE - STACK_MAX_SIZE)
+        return false;
+    
+    /* 32bit >= vaddr >= esp */
+    return (vaddr < esp && vaddr >= (char *) esp - STACK_HEURISTIC) ||
+           (vaddr == esp);
 }
 
 /* Grow the stack by creating a new page */
 bool 
 page_grow_stack (void *vaddr)
 {
-    /* Check if we're within stack size limit */
-    if (vaddr < PHYS_BASE - STACK_MAX_SIZE)
+    /* validation */
+    if (vaddr < PHYS_BASE - STACK_MAX_SIZE || !is_user_vaddr(vaddr))
         return false;
     
-    /* Round down to page boundary */
     void *page_addr = pg_round_down (vaddr);
+    struct thread *cur = thread_current ();
     
-    /* Create a new zero-filled page */
+    /* page exists? */
+    struct page *existing_page = page_lookup (&cur->page_table, page_addr);
+    if (existing_page != NULL)
+        return page_load (existing_page);
+    
+    /* new page create, insert */
     struct page *p = page_create (page_addr, PAGE_ZERO, true);
     if (p == NULL)
         return false;
     
-    /* Insert into current thread's page table */
-    struct thread *cur = thread_current ();
-    if (!page_insert (&cur->page_table, p))
-    {
+    if (!page_insert (&cur->page_table, p)){
         free (p);
         return false;
     }
     
-    /* Load the page immediately */
-    return page_load (p);
+    /* immidiate load */
+    if (!page_load (p)){
+        page_delete (&cur->page_table, p);
+        return false;
+    }
+    
+    return true;
 }
