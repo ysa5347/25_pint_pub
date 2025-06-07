@@ -474,13 +474,15 @@ mapid_t sys_mmap(int fd, void *addr) {
   
   printf("[DEBUG] sys_mmap called: fd=%d, addr=%p\n", fd, addr);
   
-  /* 기본 인자 검증 */
-  if (addr != NULL) {
-    check_user((const uint8_t*) addr);
-  }
-  
+  /* 기본 인자 검증 - 실제 메모리 접근 없이 주소 범위만 확인 */
   if (addr == NULL) {
     printf("[DEBUG] mmap failed: addr is NULL\n");
+    return MAP_FAILED;
+  }
+  
+  /* 주소가 유효한 사용자 주소 범위에 있는지 확인 */
+  if (!is_user_vaddr(addr)) {
+    printf("[DEBUG] mmap failed: addr not in user space (addr=%p, PHYS_BASE=%p)\n", addr, PHYS_BASE);
     return MAP_FAILED;
   }
   
@@ -517,6 +519,14 @@ mapid_t sys_mmap(int fd, void *addr) {
   /* 매핑 크기 계산 (페이지 단위로 반올림) */
   size_t mapping_length = ROUND_UP(file_size, PGSIZE);
   printf("[DEBUG] mapping_length: %zu\n", mapping_length);
+  
+  /* 매핑 영역 전체가 유효한 사용자 주소 범위에 있는지 확인 */
+  void *end_addr = (uint8_t*)addr + mapping_length;
+  if (!is_user_vaddr(end_addr - 1)) {
+    printf("[DEBUG] mmap failed: mapping extends beyond user space (end=%p)\n", end_addr);
+    lock_release (&filesys_lock);
+    return MAP_FAILED;
+  }
   
   /* 주소 겹침 검사 */
   if (check_address_overlap(current, addr, mapping_length)) {
