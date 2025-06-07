@@ -93,9 +93,13 @@ page_delete (struct hash *page_table, struct page *p)
 {
     hash_delete (page_table, &p->hash_elem);
     
-    /* Free the physical frame if allocated */
-    if (p->frame != NULL)
+    /* Remove pagedir mapping if the page is in memory */
+    if (p->frame != NULL && p->state == PAGE_MEMORY)
+    {
+        pagedir_clear_page (thread_current()->pagedir, p->vaddr);
+        /* Free the physical frame if allocated */
         frame_free (p->frame);
+    }
     
     /* Free swap slot if used */
     if (p->state == PAGE_SWAPPED && p->swap_slot != SIZE_MAX)
@@ -346,9 +350,9 @@ page_destroy_func (struct hash_elem *e, void *aux UNUSED)
 {
     struct page *p = hash_entry (e, struct page, hash_elem);
     
-    /* Free the physical frame if allocated */
-    if (p->frame != NULL)
-        frame_free (p->frame);
+    /* Remove pagedir mapping if the page is in memory */
+    if (p->frame != NULL && p->state == PAGE_MEMORY)
+        pagedir_clear_page (thread_current()->pagedir, p->vaddr);
     
     /* Free swap slot if used */
     if (p->state == PAGE_SWAPPED && p->swap_slot != SIZE_MAX)
