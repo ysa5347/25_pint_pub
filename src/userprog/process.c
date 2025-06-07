@@ -302,6 +302,21 @@ process_exit (void)
     }
   }
 
+while (!list_empty(&cur->mmap_list)) {
+  struct list_elem *e = list_front(&cur->mmap_list);
+  struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+  
+  /* 에러가 발생해도 계속 정리 진행 */
+  sys_munmap(entry->mapid);
+  
+  /* 무한 루프 방지를 위한 안전장치 */
+  if (!list_empty(&cur->mmap_list) && list_front(&cur->mmap_list) == e) {
+    /* sys_munmap이 실패한 경우 강제 제거 */
+    list_remove(e);
+    palloc_free_page(entry);
+  }
+}
+  
   /* Release file for the executable */
   if(cur->executing_file) {
     file_allow_write(cur->executing_file);
@@ -446,6 +461,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   #ifdef USERPROG
   /* 이제 user thread가 완전히 설정된 상태에서 page table 초기화 */
   page_table_init (&t->page_table);
+  
+  // init mmap_list
+  list_init(&t->mmap_list);
+  t->next_mapid = 1;
   #endif
 
   /* Open executable file. */
@@ -543,7 +562,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  finish:
   /* We arrive here whether the load is successful or not. */
-
+  if (!success) {
+    /* mmap_list 정리 */
+    while (!list_empty(&t->mmap_list)) {
+      struct list_elem *e = list_pop_front(&t->mmap_list);
+      struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+      if (entry->file) file_close(entry->file);
+      palloc_free_page(entry);
+    }
+  }
   // do not close file here, postpone until it terminates
   return success;
 }

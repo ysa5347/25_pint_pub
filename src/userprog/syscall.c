@@ -40,6 +40,8 @@ unsigned sys_tell(int fd);
 void sys_close(int fd);
 int sys_read(int fd, void *buffer, unsigned size);
 int sys_write(int fd, const void *buffer, unsigned size);
+mapid_t sys_mmap(int fd, void *addr);
+void sys_munmap(mapid_t mapping);
 
 struct lock filesys_lock;
 
@@ -219,7 +221,29 @@ syscall_handler (struct intr_frame *f)
       sys_close(fd);
       break;
     }
+  case SYS_MMAP: // 13
+    {
+      int fd;
+      void *addr;
+      mapid_t return_code;
+      
+      memread_user(f->esp + 4, &fd, intsize);
+      memread_user(f->esp + 8, &addr, ptrsize);
 
+      return_code = sys_mmap(fd, addr);
+      f->eax = return_code;
+      break;
+    }
+
+  case SYS_MUNMAP: // 14
+    {
+      mapid_t mapping;
+      
+      memread_user(f->esp + 4, &mapping, sizeof(mapid_t));
+
+      sys_munmap(mapping);
+      break;
+    }
 
   /* unhandled case */
   default:
@@ -434,6 +458,130 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   return ret;
 }
 
+mapid_t sys_mmap(int fd, void *addr) {
+  struct thread *current = thread_current();
+  
+  /* 기본 인자 검증 */
+  if (addr != NULL) {
+    check_user((const uint8_t*) addr);
+  }
+  
+  if (addr == NULL) {
+    return MAP_FAILED;
+  }
+  
+  if (((uint32_t) addr) % PGSIZE != 0) {
+    return MAP_FAILED;
+  }
+  
+  if (fd < 0 || fd == STDIN || fd == STDOUT) {
+    return MAP_FAILED;
+  }
+  
+  /* 파일 디스크립터 확인 및 파일 정보 얻기 */
+  lock_acquire (&filesys_lock);
+  
+  struct file_desc* file_d = find_file_desc(current, fd);
+  if (file_d == NULL || file_d->file == NULL) {
+    lock_release (&filesys_lock);
+    return MAP_FAILED;
+  }
+  
+  /* 파일 크기 확인 */
+  off_t file_size = file_length(file_d->file);
+  if (file_size <= 0) {
+    lock_release (&filesys_lock);
+    return MAP_FAILED;
+  }
+  
+  /* 매핑 크기 계산 (페이지 단위로 반올림) */
+  size_t mapping_length = ROUND_UP(file_size, PGSIZE);
+  
+  /* 주소 겹침 검사 */
+  if (check_address_overlap(current, addr, mapping_length)) {
+    lock_release (&filesys_lock);
+    return MAP_FAILED;
+  }
+  
+  /* 파일 재오픈 (독립적인 파일 포인터 필요) */
+  struct file *mapped_file = file_reopen(file_d->file);
+  if (mapped_file == NULL) {
+    lock_release (&filesys_lock);
+    return MAP_FAILED;
+  }
+  
+  lock_release (&filesys_lock);
+  
+  /* mmap_entry 생성 및 초기화 */
+  struct mmap_entry *entry = palloc_get_page(0);
+  if (entry == NULL) {
+    file_close(mapped_file);
+    return MAP_FAILED;
+  }
+  
+  entry->mapid = get_next_mapid(current);
+  entry->addr = addr;
+  entry->length = mapping_length;
+  entry->file = mapped_file;
+  entry->offset = 0;
+  
+  /* 프로세스의 mmap_list에 추가 */
+  list_push_back(&current->mmap_list, &entry->elem);
+  
+  // printf("[DEBUG] sys_mmap success: fd=%d, addr=%p, mapid=%d, length=%zu\n", 
+  //        fd, addr, entry->mapid, mapping_length);
+  
+  return entry->mapid;
+}
+
+void sys_munmap(mapid_t mapping) {
+  struct thread *current = thread_current();
+  
+  /* Find the mmap entry */
+  struct mmap_entry *entry = find_mmap_entry(current, mapping);
+  if (entry == NULL) {
+    return; /* Invalid mapping ID */
+  }
+  
+  /* Remove from mmap list */
+  list_remove(&entry->elem);
+  
+  /* Unmap all pages in this mapping */
+  void *addr = entry->addr;
+  size_t length = entry->length;
+  
+  for (void *page_addr = addr; 
+       (uint8_t*)page_addr < (uint8_t*)addr + length; 
+       page_addr = (uint8_t*)page_addr + PGSIZE)
+  {
+    struct page *p = page_lookup(&current->page_table, page_addr);
+    if (p != NULL)
+    {
+      /* If page is in memory and dirty, write back to file */
+      if (p->state == PAGE_MEMORY && p->frame != NULL)
+      {
+        if (pagedir_is_dirty(current->pagedir, page_addr))
+        {
+          /* Write dirty page back to file */
+          lock_acquire (&filesys_lock);
+          file_seek(entry->file, p->file_offset);
+          file_write(entry->file, p->frame, p->file_bytes);
+          lock_release (&filesys_lock);
+        }
+      }
+      
+      /* Remove page from page table */
+      page_delete(&current->page_table, p);
+    }
+  }
+  
+  /* Close the file and free the entry */
+  lock_acquire (&filesys_lock);
+  file_close(entry->file);
+  lock_release (&filesys_lock);
+  
+  palloc_free_page(entry);
+}
 /****************** Helper Functions on Memory Access ********************/
 static void
 check_user (const uint8_t *uaddr) {
@@ -510,5 +658,87 @@ find_file_desc(struct thread *t, int fd)
     }
   }
 
+  return NULL;
+}
+
+static struct mmap_entry*
+find_mmap_entry(struct thread *t, mapid_t mapid)
+{
+  ASSERT (t != NULL);
+  
+  if (list_empty(&t->mmap_list)) {
+    return NULL;
+  }
+  
+  struct list_elem *e;
+  for (e = list_begin(&t->mmap_list); e != list_end(&t->mmap_list); e = list_next(e))
+  {
+    struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+    if (entry->mapid == mapid) {
+      return entry;
+    }
+  }
+  
+  return NULL;
+}
+
+static bool
+check_address_overlap(struct thread *t, void *addr, size_t length)
+{
+  ASSERT (t != NULL);
+  
+  void *start = addr;
+  void *end = (uint8_t*)addr + length;
+  
+  if (list_empty(&t->mmap_list)) {
+    return false; // 겹침 없음
+  }
+  
+  struct list_elem *e;
+  for (e = list_begin(&t->mmap_list); e != list_end(&t->mmap_list); e = list_next(e))
+  {
+    struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+    void *entry_start = entry->addr;
+    void *entry_end = (uint8_t*)entry->addr + entry->length;
+    
+    // 겹침 검사: (start < entry_end) && (end > entry_start)
+    if (start < entry_end && end > entry_start) {
+      return true; // 겹침 발생
+    }
+  }
+  
+  return false; // 겹침 없음
+}
+
+static mapid_t
+get_next_mapid(struct thread *t)
+{
+  ASSERT (t != NULL);
+  return t->next_mapid++;
+}
+
+/* Find mmap entry that contains the given address */
+struct mmap_entry*
+find_mmap_entry_by_addr(struct thread *t, void *addr)
+{
+  ASSERT (t != NULL);
+  
+  if (list_empty(&t->mmap_list)) {
+    return NULL;
+  }
+  
+  struct list_elem *e;
+  for (e = list_begin(&t->mmap_list); e != list_end(&t->mmap_list); e = list_next(e))
+  {
+    struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+    void *entry_start = entry->addr;
+    void *entry_end = (uint8_t*)entry->addr + entry->length;
+    
+    /* Check if address falls within this mapping range */
+    if (addr >= entry_start && addr < entry_end) {
+      return entry;
+    }
+  }
+  
   return NULL;
 }

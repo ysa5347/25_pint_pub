@@ -5,11 +5,14 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "vm/page.h"
 #include "vm/frame.h"
 #endif
+
+extern struct lock filesys_lock;
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -198,7 +201,67 @@ page_fault (struct intr_frame *f)
   {
     /* Page not found in page table - check if it's a valid stack access */
     // printf ("Page fault: checking stack access for %p (esp=%p)\n", fault_addr, f->esp);
-    
+        /* Check if this is a mmap region access before checking stack */
+    struct mmap_entry *mmap_entry = find_mmap_entry_by_addr(cur, fault_addr);
+    if (mmap_entry != NULL)
+    {
+      /* This is a memory mapped file access - load the page from file */
+      // printf ("Page fault: mmap access at %p (mapid=%d)\n", fault_addr, mmap_entry->mapid);
+      
+      void *page_addr = pg_round_down(fault_addr);
+      off_t page_offset = (uint8_t*)page_addr - (uint8_t*)mmap_entry->addr;
+      off_t file_offset = mmap_entry->offset + page_offset;
+      
+      /* Calculate how many bytes to read from file for this page */
+      lock_acquire (&filesys_lock);
+      off_t file_size = file_length(mmap_entry->file);
+      lock_release (&filesys_lock);
+      
+      size_t file_bytes = 0;
+      size_t zero_bytes = 0;
+      
+      if (file_offset < file_size)
+      {
+        file_bytes = file_size - file_offset;
+        if (file_bytes > PGSIZE)
+          file_bytes = PGSIZE;
+        zero_bytes = PGSIZE - file_bytes;
+      }
+      else
+      {
+        /* Past end of file - zero page */
+        file_bytes = 0;
+        zero_bytes = PGSIZE;
+      }
+      
+      /* Create a file-backed page */
+      struct page *p = page_create_file(page_addr, mmap_entry->file, 
+                                        file_offset, file_bytes, zero_bytes, true);
+      if (p == NULL)
+      {
+        // printf ("Page fault: failed to create mmap page at %p\n", fault_addr);
+        goto page_fault_exit;
+      }
+      
+      /* Insert into page table */
+      if (!page_insert (&cur->page_table, p))
+      {
+        // printf ("Page fault: failed to insert mmap page at %p\n", fault_addr);
+        free (p);
+        goto page_fault_exit;
+      }
+      
+      /* Load the page immediately */
+      if (!page_load (p))
+      {
+        // printf ("Page fault: failed to load mmap page at %p\n", fault_addr);
+        page_delete (&cur->page_table, p);
+        goto page_fault_exit;
+      }
+      
+      // printf ("Page fault: successfully loaded mmap page at %p\n", fault_addr);
+      return;
+    }
     if (page_is_stack_access (fault_addr, f->esp))
     {
       /* Calculate current stack size to check limits */
