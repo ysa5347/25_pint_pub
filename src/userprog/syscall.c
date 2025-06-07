@@ -12,7 +12,9 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "lib/kernel/list.h"
-
+#ifndef ROUND_UP
+#define ROUND_UP(X, STEP) (((X) + (STEP) - 1) / (STEP) * (STEP))
+#endif
 #ifdef USERPROG
 #include "vm/page.h"
 #include "userprog/pagedir.h"

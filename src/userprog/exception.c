@@ -201,8 +201,25 @@ page_fault (struct intr_frame *f)
   {
     /* Page not found in page table - check if it's a valid stack access */
     // printf ("Page fault: checking stack access for %p (esp=%p)\n", fault_addr, f->esp);
-        /* Check if this is a mmap region access before checking stack */
-    struct mmap_entry *mmap_entry = find_mmap_entry_by_addr(cur, fault_addr);
+    /* Check if this is a mmap region access before checking stack */
+    struct mmap_entry *mmap_entry = NULL;
+
+    /* Find mmap entry containing the fault address */
+    if (!list_empty(&cur->mmap_list)) {
+      struct list_elem *e;
+      for (e = list_begin(&cur->mmap_list); e != list_end(&cur->mmap_list); e = list_next(e))
+      {
+        struct mmap_entry *entry = list_entry(e, struct mmap_entry, elem);
+        void *entry_start = entry->addr;
+        void *entry_end = (uint8_t*)entry->addr + entry->length;
+        
+        /* Check if address falls within this mapping range */
+        if (fault_addr >= entry_start && fault_addr < entry_end) {
+          mmap_entry = entry;
+          break;
+        }
+      }
+    }
     if (mmap_entry != NULL)
     {
       /* This is a memory mapped file access - load the page from file */
