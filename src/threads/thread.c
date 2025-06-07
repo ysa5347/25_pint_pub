@@ -369,10 +369,6 @@ thread_exit (void)
 
   struct thread *curr = thread_current();
 
-#ifdef USERPROG
-  page_table_destroy(&curr->page_table);
-#endif
-
   // release all locks
   struct list_elem *e;
   for (e = list_begin (&curr->locks); e != list_end (&curr->locks); e = list_next (e)) {
