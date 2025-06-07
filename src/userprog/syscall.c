@@ -513,10 +513,17 @@ mapid_t sys_mmap(int fd, void *addr) {
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }
-  
+
+  /* 파일 재오픈 전에 추가 검증 */  
+  if (file_length(file_d->file) <= 0) {
+      lock_release (&filesys_lock);
+      return MAP_FAILED;
+  }
+
   /* 파일 재오픈 (독립적인 파일 포인터 필요) */
   struct file *mapped_file = file_reopen(file_d->file);
   if (mapped_file == NULL) {
+    // printf("[DEBUG] file_reopen failed for fd=%d\n", fd);
     lock_release (&filesys_lock);
     return MAP_FAILED;
   }

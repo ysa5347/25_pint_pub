@@ -865,8 +865,6 @@ install_page (void *upage, void *kpage, bool writable)
                   && pagedir_set_page (t->pagedir, upage, kpage, writable));
 
   #ifdef USERPROG
-  #ifdef VM
-    /* VM: Update the page table entry if it exists */
     if (success)
     {
       struct page *p = page_lookup (&t->page_table, upage);
@@ -875,7 +873,6 @@ install_page (void *upage, void *kpage, bool writable)
         page_set_frame (p, kpage);
       }
     }
-  #endif
   #endif
   return success;
 }
