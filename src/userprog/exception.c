@@ -168,8 +168,10 @@ page_fault (struct intr_frame *f)
   struct page *page = NULL;
   
   /* Check if fault address is in user space */
-  if (!is_user_vaddr (fault_addr))
+  if (!is_user_vaddr (fault_addr)){
+    printf ("Page fault: invalid user address %p\n", fault_addr);
     goto page_fault_exit;
+  }
   
   /* Try to find the page in the page table */
   page = page_lookup (&cur->page_table, fault_addr);
@@ -177,27 +179,55 @@ page_fault (struct intr_frame *f)
   if (page != NULL)
   {
     /* Page exists in page table but not in memory - load it */
+    printf ("Page fault: loading existing page at %p\n", fault_addr);
+    
     if (page_load (page))
     {
       /* Successfully loaded the page */
+      printf ("Page fault: successfully loaded page at %p\n", fault_addr);
       return;
     }
     else
     {
       /* Failed to load the page */
-      printf ("Page fault: failed to load page at %p\n", fault_addr);
+      printf ("Page fault: failed to load existing page at %p\n", fault_addr);
       goto page_fault_exit;
     }
   }
   else
   {
     /* Page not found in page table - check if it's a valid stack access */
+    printf ("Page fault: checking stack access for %p (esp=%p)\n", fault_addr, f->esp);
+    
     if (page_is_stack_access (fault_addr, f->esp))
     {
+      /* Calculate current stack size to check limits */
+      size_t current_stack_size = PHYS_BASE - pg_round_down(fault_addr);
+      printf ("Page fault: potential stack growth to size %zu bytes\n", current_stack_size);
+      
+      /* Check if we've reached stack size limit */
+      if (current_stack_size > STACK_MAX_SIZE)
+      {
+        printf ("Page fault: stack size limit exceeded (%zu > %d bytes)\n", 
+                current_stack_size, STACK_MAX_SIZE);
+        goto page_fault_exit;
+      }
+      
+      /* Additional validation: check if this is a reasonable stack growth */
+      if (fault_addr < f->esp - STACK_HEURISTIC * 4)  /* More lenient for function calls */
+      {
+        printf ("Page fault: stack access too far from ESP (%p vs %p, distance=%ld)\n", 
+                fault_addr, f->esp, (char*)f->esp - (char*)fault_addr);
+        goto page_fault_exit;
+      }
+      
       /* Try to grow the stack */
+      printf ("Page fault: attempting to grow stack at %p\n", fault_addr);
+      
       if (page_grow_stack (fault_addr))
       {
         /* Successfully grew the stack */
+        printf ("Page fault: successfully grew stack at %p\n", fault_addr);
         return;
       }
       else
@@ -209,8 +239,20 @@ page_fault (struct intr_frame *f)
     }
     else
     {
-      /* Invalid memory access */
-      printf ("Page fault: invalid memory access at %p\n", fault_addr);
+      /* Invalid memory access - provide detailed error information */
+      if (fault_addr < PHYS_BASE && fault_addr >= PHYS_BASE - STACK_MAX_SIZE)
+      {
+        printf ("Page fault: invalid stack access at %p (esp=%p, distance=%ld)\n", 
+                fault_addr, f->esp, (char*)f->esp - (char*)fault_addr);
+      }
+      else if (fault_addr < (void*)0x08048000)  /* Below typical code segment */
+      {
+        printf ("Page fault: access to low memory at %p (possible null pointer)\n", fault_addr);
+      }
+      else
+      {
+        printf ("Page fault: invalid memory access at %p\n", fault_addr);
+      }
       goto page_fault_exit;
     }
   }
@@ -223,6 +265,34 @@ page_fault_exit:
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   printf ("  fault_addr=%p, esp=%p, eip=%p\n", fault_addr, f->esp, f->eip);
+  
+  /* Additional debugging information for stack-related faults */
+  if (fault_addr < PHYS_BASE && fault_addr >= PHYS_BASE - STACK_MAX_SIZE)
+  {
+    printf ("  Stack region access detected\n");
+    printf ("  Distance from ESP: %ld bytes\n", (char*)f->esp - (char*)fault_addr);
+    printf ("  Current stack top: %p\n", f->esp);
+    
+    /* Try to identify stack pages */
+    struct hash_iterator iter;
+    int stack_page_count = 0;
+    void *lowest_stack_page = PHYS_BASE;
+    
+    hash_first (&iter, &cur->page_table);
+    while (hash_next (&iter))
+    {
+      struct page *p = hash_entry (hash_cur (&iter), struct page, hash_elem);
+      if (p->vaddr < PHYS_BASE && p->vaddr >= PHYS_BASE - STACK_MAX_SIZE)
+      {
+        stack_page_count++;
+        if (p->vaddr < lowest_stack_page)
+          lowest_stack_page = p->vaddr;
+      }
+    }
+    
+    printf ("  Current stack pages: %d, lowest: %p\n", stack_page_count, lowest_stack_page);
+    printf ("  Current stack size: %zu bytes\n", PHYS_BASE - lowest_stack_page);
+  }
   
   /* Kill the faulting process */
   kill (f);

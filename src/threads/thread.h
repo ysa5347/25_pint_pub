@@ -100,6 +100,9 @@ struct thread
     // needed for priority donations
     struct lock *waiting_lock;          /* The lock object on which this thread is waiting (or NULL if not locked) */
     struct list locks;                  /* List of locks the thread holds (for multiple donations) */
+    
+    void *stack_bottom;
+    size_t stack_size;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
