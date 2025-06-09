@@ -73,14 +73,14 @@ source helper.sh
 
 ## 주의사항
 
-### ⚠️ 사전 요구사항
+### 사전 요구사항
 - Linux/Ubuntu 14.04 환경에서 git 설치 후 실행
 - git clone으로 프로젝트 파일을 받은 후, project root directory name을 `25_pint_pub` -> `pintos`로 변경해야 잘 작동합니다. 변경하지 않아도 작동할 수 있으나, 시스템 상에 다른 `pintos` name의 directory가 있다면 잘못 인식될 수 있습니다.
 
-### 🔄 재실행 시
+### 재실행 시
 - 스크립트는 중복 설정을 방지하는 로직을 포함
 - PATH에 pintos/ directory가 이미 설정되어 있으면 경고 메시지만 표시
 
-### 🐛 문제 해결
+### 문제 해결
 - **PintOS 경로를 찾지 못하는 경우**: 수동으로 전체 경로 입력
 - **빌드 실패 시 즉시 exit**: 자세한 build error msg 열람이 필요할 땐 $ ./helper.sh 로 실행해서 build 과정에서 문제를 handle 해야 함
